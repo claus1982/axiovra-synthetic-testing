@@ -12,9 +12,16 @@ def run(*args, timeout=30):
     return subprocess.run(args, check=True, capture_output=True, timeout=timeout)
 
 def display_visible(xml):
-    nodes = ET.fromstring(xml).iter("node")
-    texts = {n.get("text", "").strip().casefold() for n in nodes}
-    return "display" in texts and bool(texts & {"brightness level", "adaptive brightness", "dark theme", "display size and text", "screen timeout"})
+    nodes = list(ET.fromstring(xml).iter("node"))
+    settings = [n for n in nodes if n.get("package") == "com.android.settings"]
+    # Android 34 exposes the collapsing toolbar title through content-desc.
+    # The Settings package and screen-specific controls remain required.
+    labels = {n.get("text", "").strip().casefold() for n in settings}
+    title = any(n.get("resource-id") == "com.android.settings:id/collapsing_toolbar"
+                and (n.get("content-desc", "").strip().casefold() == "display"
+                     or n.get("text", "").strip().casefold() == "display")
+                for n in settings)
+    return title and bool(labels & {"brightness level", "adaptive brightness", "dark theme", "display size and text", "screen timeout"})
 
 def wait_for_display(out, report):
     # Android can accept am start before the accessibility tree is ready.
@@ -61,7 +68,14 @@ def main():
             run("mobilerun", "ping")
             run("adb", "shell", "input", "keyevent", "KEYCODE_HOME")
             report["agent_executed"] = True
-            run("mobilerun", "run", GOAL, *provider, "--steps", "12", "--no-vision", timeout=agent_timeout)
+            try:
+                result = run("mobilerun", "run", GOAL, *provider, "--steps", "12", "--no-vision", timeout=agent_timeout)
+                if mode == "local":
+                    (out / "agent.log").write_bytes(result.stdout + result.stderr)
+            except subprocess.CalledProcessError as exc:
+                if mode == "local":
+                    (out / "agent.log").write_bytes((exc.stdout or b"") + (exc.stderr or b""))
+                raise
         else:
             raise ValueError("Invalid mode")
         report["passed"] = wait_for_display(out, report)
