@@ -45,6 +45,7 @@ def main():
         for _ in range(5):
             run("adb", "shell", "uiautomator", "dump", "/sdcard/demo.xml")
             xml = run("adb", "shell", "cat", "/sdcard/demo.xml").stdout
+            (out / "hierarchy.xml").write_bytes(xml)
             if display_visible(xml):
                 report["passed"] = True
                 break
@@ -53,6 +54,8 @@ def main():
             raise RuntimeError("Independent UI assertion failed")
     except Exception as exc:
         report["error_type"] = type(exc).__name__
+        if isinstance(exc, RuntimeError):
+            report["error_message"] = str(exc)
         raise RuntimeError("Demo failed; consult result.json") from None
     finally:
         try:
