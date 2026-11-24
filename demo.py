@@ -16,6 +16,28 @@ def display_visible(xml):
     texts = {n.get("text", "").strip().casefold() for n in nodes}
     return "display" in texts and bool(texts & {"brightness level", "adaptive brightness", "dark theme", "display size and text", "screen timeout"})
 
+def wait_for_display(out, report):
+    # Android can accept am start before the accessibility tree is ready.
+    deadline = time.monotonic() + 90
+    attempts = []
+    while time.monotonic() < deadline:
+        try:
+            # Never accept a stale tree from an earlier attempt.
+            run("adb", "shell", "rm", "-f", "/sdcard/demo.xml", timeout=5)
+            dump = run("adb", "shell", "uiautomator", "dump", "/sdcard/demo.xml", timeout=15)
+            xml = run("adb", "exec-out", "cat", "/sdcard/demo.xml", timeout=5).stdout
+            (out / "hierarchy.xml").write_bytes(xml)
+            matched = display_visible(xml)
+            attempts.append({"matched": matched})
+            if matched:
+                return True
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ET.ParseError) as exc:
+            attempts.append({"error": type(exc).__name__, "command": str(getattr(exc, "cmd", "")), "stderr": str(getattr(exc, "stderr", ""))[:300]})
+        finally:
+            report["oracle_attempts"] = attempts
+        time.sleep(2)
+    return False
+
 def main():
     mode = os.environ.get("DEMO_MODE", "smoke")
     out = Path("out")
@@ -39,17 +61,10 @@ def main():
             run("mobilerun", "ping")
             run("adb", "shell", "input", "keyevent", "KEYCODE_HOME")
             report["agent_executed"] = True
-            run("mobilerun", "run", GOAL, *provider, "--steps", "12", timeout=agent_timeout)
+            run("mobilerun", "run", GOAL, *provider, "--steps", "12", "--no-vision", timeout=agent_timeout)
         else:
             raise ValueError("Invalid mode")
-        for _ in range(5):
-            run("adb", "shell", "uiautomator", "dump", "/sdcard/demo.xml")
-            xml = run("adb", "shell", "cat", "/sdcard/demo.xml").stdout
-            (out / "hierarchy.xml").write_bytes(xml)
-            if display_visible(xml):
-                report["passed"] = True
-                break
-            time.sleep(2)
+        report["passed"] = wait_for_display(out, report)
         if not report["passed"]:
             raise RuntimeError("Independent UI assertion failed")
     except Exception as exc:
