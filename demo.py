@@ -24,14 +24,22 @@ def main():
     try:
         if mode == "smoke":
             run("adb", "shell", "am", "start", "-a", "android.settings.DISPLAY_SETTINGS")
-        elif mode == "agent":
-            if os.environ.get("GEMINI_FREE_TIER_CONFIRMED") != "true" or not os.environ.get("GOOGLE_API_KEY") or not os.environ.get("GEMINI_MODEL"):
-                raise RuntimeError("Dedicated free-tier-only project and model required")
+        elif mode in ("agent", "local"):
+            if mode == "agent":
+                if os.environ.get("GEMINI_FREE_TIER_CONFIRMED") != "true" or not os.environ.get("GOOGLE_API_KEY") or not os.environ.get("GEMINI_MODEL"):
+                    raise RuntimeError("Dedicated free-tier-only project and model required")
+                provider = ["--provider", "GoogleGenAI", "--model", os.environ["GEMINI_MODEL"]]
+                agent_timeout = 240
+            else:
+                if os.environ.get("OLLAMA_NO_CLOUD") != "1":
+                    raise RuntimeError("Local-only inference required")
+                provider = ["--provider", "Ollama", "--model", "qwen3.5:2b", "--base_url", "http://127.0.0.1:11434"]
+                agent_timeout = 600
             run("mobilerun", "setup", timeout=150)
             run("mobilerun", "ping")
             run("adb", "shell", "input", "keyevent", "KEYCODE_HOME")
             report["agent_executed"] = True
-            run("mobilerun", "run", GOAL, "--provider", "GoogleGenAI", "--model", os.environ["GEMINI_MODEL"], "--steps", "12", timeout=240)
+            run("mobilerun", "run", GOAL, *provider, "--steps", "12", timeout=agent_timeout)
         else:
             raise ValueError("Invalid mode")
         for _ in range(5):

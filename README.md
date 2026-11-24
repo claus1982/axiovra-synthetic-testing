@@ -5,6 +5,8 @@ Independent open-source experiment for goal-driven Android UI testing. The publi
 ## Run
 In Actions, choose **Android demo** and Run workflow. `smoke` (default) validates emulator + independent UI oracle without any AI calls. `agent` uses Mobilerun with Gemini; before enabling it, provision a dedicated free-tier-only API project with billing disabled, set repository secret GOOGLE_API_KEY and variable GEMINI_FREE_TIER_CONFIRMED=true, and set GEMINI_MODEL to a currently free-tier eligible model. No paid provider or fallback is configured. API quotas and provider terms apply; a step limit is not a monetary guarantee.
 
+The experimental `local` mode runs Qwen3.5 2B via Ollama on the ephemeral cloud runner, with cloud inference disabled and no API key. This is a bounded CPU feasibility probe, not a performance claim. The model must pass the same independent oracle; no fallback to a paid API.
+
 The agent receives a goal rather than click instructions. An independent UI assertion checks the actual result. The public artifact contains only a demo screenshot and a small JSON report. A failed assertion fails the run.
 
 ## Boundaries
